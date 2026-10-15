@@ -687,12 +687,18 @@ void serviceConnection() {
   ConnectionReport report;
   if (connectionReports && xQueueReceive(connectionReports, &report, 0) == pdPASS) {
     if (reconnectRequested || report.generation != connectionGeneration) return;
+    bool statusChanged=connectionState!=String(report.state) || connectionIP!=String(report.ip);
     connectionState = report.state; requestedSSID = report.requested;
     connectedSSID = report.actual; connectionIP = report.ip;
     connectionRSSI = report.rssi; activeNetwork = report.index;
     lastConnectionAttempt = report.attemptedAt;
     lastConnectionError = report.error;
     stationReady = report.actual[0] && report.ip[0];
+    if(statusChanged) {
+      Serial.print("[STATUS] ");Serial.println(connectionState);
+      Serial.print("[STATUS] Router IP: ");Serial.println(connectionIP);
+      if(stationReady && rtspStarted)printRTSP();
+    }
   }
 }
 
@@ -740,12 +746,18 @@ void startRTSP() {
   }
   Serial.println("[CAMERA] Starting H264 encoder");
   videoConfig=VideoSetting(runningDevice.resolution,runningDevice.fps,VIDEO_H264,0);
+  // SDK 4.1.0 leaves rotation unset in a temporary VideoSetting.
+  videoConfig.setRotation(0);
   videoConfig.setBitrate(runningDevice.bitrate);
+  Serial.print("[CAMERA] H264 dimensions: ");Serial.print(videoConfig.width());Serial.print('x');Serial.println(videoConfig.height());
+  Serial.print("[CAMERA] FPS: ");Serial.println(videoConfig.fps());
+  Serial.println("[CAMERA] Rotation: 0");
   Camera.configVideoChannel(
       VIDEO_CHANNEL,
       videoConfig
   );
   Camera.videoInit();
+  Serial.print("[CAMERA] Open status (SDK raw): ");Serial.println(Camera.cameraOpenStatus());
   if(!rtsp.preparePort(runningDevice.rtspPort)) { Serial.println("[RTSP] Port setup failed"); return; }
   rtsp.configVideo(videoConfig);
   rtsp.begin();
@@ -758,6 +770,7 @@ void startRTSP() {
     return;
   }
   Camera.channelBegin(VIDEO_CHANNEL);
+  Camera.printInfo();
   rtspStarted = true;
   Serial.println("[RTSP] Initialized");
   printRTSP();
